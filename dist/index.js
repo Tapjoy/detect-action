@@ -163,7 +163,7 @@ const github_1 = __nccwpck_require__(5438);
 const application_constants_1 = __nccwpck_require__(9717);
 const inputs_1 = __nccwpck_require__(6180);
 const COMMENT_PREFACE = '<!-- Comment automatically managed by Detect Action, do not remove this line -->';
-function commentOnPR(report) {
+function commentOnPR(report, hasPolicyViolations) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const octokit = (0, github_1.getOctokit)(inputs_1.GITHUB_TOKEN);
@@ -177,25 +177,35 @@ function commentOnPR(report) {
             owner: contextOwner,
             repo: contextRepo
         });
+        let foundSameComment = false;
+        let hadExistingComment = false;
         for (const comment of existingComments) {
             const firstLine = (_a = comment.body) === null || _a === void 0 ? void 0 : _a.split('\r\n')[0];
             if (firstLine === COMMENT_PREFACE) {
-                (0, core_1.debug)(`Existing comment from ${application_constants_1.APPLICATION_NAME} found. Attempting to delete it...`);
-                octokit.rest.issues.deleteComment({
-                    comment_id: comment.id,
-                    owner: contextOwner,
-                    repo: contextRepo
-                });
+                if (comment.body === message) {
+                    foundSameComment = true;
+                }
+                else {
+                    (0, core_1.debug)(`Existing comment from ${application_constants_1.APPLICATION_NAME} found. Attempting to update it...`);
+                    hadExistingComment = true;
+                    octokit.rest.issues.deleteComment({
+                        comment_id: comment.id,
+                        owner: contextOwner,
+                        repo: contextRepo
+                    });
+                }
             }
         }
-        (0, core_1.debug)('Creating a new comment...');
-        octokit.rest.issues.createComment({
-            issue_number: contextIssue,
-            owner: contextOwner,
-            repo: contextRepo,
-            body: message
-        });
-        (0, core_1.debug)('Successfully created a new comment!');
+        if (!foundSameComment && (hasPolicyViolations || hadExistingComment)) {
+            (0, core_1.debug)('Creating a new comment...');
+            octokit.rest.issues.createComment({
+                issue_number: contextIssue,
+                owner: contextOwner,
+                repo: contextRepo,
+                body: message
+            });
+            (0, core_1.debug)('Successfully created a new comment!');
+        }
     });
 }
 exports.commentOnPR = commentOnPR;
@@ -766,7 +776,7 @@ function runWithPolicyCheck(blackduckPolicyCheck) {
             const rapidScanReport = yield (0, reporting_1.createRapidScanReportString)(policyViolations, hasPolicyViolations && failureConditionsMet);
             if ((0, github_context_1.isPullRequest)()) {
                 (0, core_1.info)('This is a pull request, commenting...');
-                (0, comment_1.commentOnPR)(rapidScanReport);
+                (0, comment_1.commentOnPR)(rapidScanReport, hasPolicyViolations);
                 (0, core_1.info)('Successfully commented on PR.');
             }
             if (hasPolicyViolations) {
